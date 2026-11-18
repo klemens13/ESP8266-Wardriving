@@ -302,7 +302,9 @@ void setup() {
   pinMode(BUILTIN_LED, OUTPUT); digitalWrite(BUILTIN_LED, HIGH);
 
   // --- GPS: hardware UART, non-blocking sejak awal
-  GPSserial.begin(GPS_BAUD_HW, SERIAL_8N1, GPS_RX_PIN, GPS_TX_PIN);
+  // rx=GPIO4(D2), tx=GPIO3(D0) — pakai konstanta GPIO numerik; D2/D0 adalah
+  // macro board-pin (uint8_t) yang tidak terkonversi implisit ke SerialMode.
+  GPSserial.begin(GPS_BAUD_HW, SERIAL_8N1, 4 /*D2=RX*/, 3 /*D0=TX*/);
   tryConfigureGps();
 
   // --- OLED (opsional)
@@ -322,13 +324,15 @@ void setup() {
   WiFi.mode(WIFI_STA);
   WiFi.disconnect();
   wifi_set_opmode(STATION_MODE);
-  wifi_promiscuous_filter_t filt;
-  filt.filter_mask = WIFI_PROMIS_FILTER_MASK_MGMT;   // hemat CPU: lewati data frames
-  wifi_set_promiscuous_filter(&filt);
-  wifi_set_promiscuous_ctrl_filter(&filt);
+  // CATATAN kompatibilitas: wifi_set_promiscuous_filter() &
+  // WIFI_PROMIS_FILTER_MASK_MGMT hanya ada di SDK nonos-2.x ke atas dan
+  // TIDAK diekspos user_interface.h core Arduino ESP8266 (3.0.x/3.1.x).
+  // Semua frame (management+data) tetap diterima callback; sniffCb sudah
+  // menyaring subtype Beacon/Probe-Response di baris pertama, sehingga
+  // biaya filter data-frame hanya beberapa instruksi per frame.
   wifi_set_promiscuous_rx_cb(sniffCb);
   wifi_promiscuous_enable(1);
-  esp_wifi_set_channel(CHANNELS[0], WIFI_SECOND_CHAN_NONE);
+  wifi_set_channel(CHANNELS[0]);
   Serial.println(F("Sniffer aktif — channel hopping dimulai."));
 }
 
@@ -355,7 +359,7 @@ void loop() {
   if (now - lastDwell >= DWELL_MS) {
     lastDwell = now;
     curChIdx = (curChIdx + 1) % NUM_CH;
-    esp_wifi_set_channel(pgm_read_byte(&CHANNELS[curChIdx]), WIFI_SECOND_CHAN_NONE);
+    wifi_set_channel(pgm_read_byte(&CHANNELS[curChIdx]));
     digitalWrite(BUILTIN_LED, LOW);            // heartbeat tiap hop
   } else digitalWrite(BUILTIN_LED, HIGH);
 
